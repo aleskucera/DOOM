@@ -1,1 +1,1 @@
-from .doom_env import VizdoomEnv
+from .doom_env import ViZDoomEnv

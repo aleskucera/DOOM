@@ -22,7 +22,7 @@ keys_to_action = {
 }
 
 if __name__ == "__main__":
-    env = gymnasium.make("VizdoomMulti-v0", render_mode="human")
+    env = gymnasium.make("ViZDoomMulti-v0", render_mode="human")
     obs = env.reset()
 
     # play(env, keys_to_action=keys_to_action)

@@ -14,7 +14,7 @@ def colorize_labels(labels: np.ndarray) -> np.ndarray:
     return color_map[labels]
 
 
-class VizdoomEnv(gym.Env):
+class ViZDoomEnv(gym.Env):
     metadata = {
         "render_modes": ["human", "rgb_array"],
         "render_fps": vzd.DEFAULT_TICRATE,
@@ -160,48 +160,80 @@ class VizdoomEnv(gym.Env):
 
         return screen, depth, labels, automap
 
-    def __collect_observations(self):
-        observation = {}
-        if self.state is not None:
-            observation["screen"] = self.state.screen_buffer
-            if self.game.get_screen_channels() == 1:
-                observation["screen"] = self.state.screen_buffer[..., np.newaxis]
-            if self.depth:
-                observation["depth"] = self.state.depth_buffer[..., np.newaxis]
-            if self.labels:
-                observation["labels"] = self.state.labels_buffer[..., np.newaxis]
-            if self.automap:
-                observation["automap"] = self.state.automap_buffer
-                if self.game.get_screen_channels() == 1:
-                    observation["automap"] = self.state.automap_buffer[..., np.newaxis]
-            if self.num_game_variables > 0:
-                observation["game_variables"] = self.state.game_variables.astype(np.float32)
-        else:
-            # there is no state in the terminal step, so a zero observation is returned instead
-            for space_key, space_item in self.observation_space.spaces.items():
-                observation[space_key] = np.zeros(space_item.shape, dtype=space_item.dtype)
+    def __add_state_data(self, observation: np.ndarray, data: np.ndarray):
+        """ Reshape the data to the correct shape. If the data is a 2D array,
+        reshape it to a 3D array with a single channel. If the data is a 3D array
+        keep it as it is. Then concatenate the data to the observation array. """
+        if len(data.shape) == 2:
+            data = data[..., np.newaxis]
+        observation = np.concatenate((observation, data), axis=2)
         return observation
 
+    def __collect_observations(self):
+        """ Create a Box space with the observation data by concatenating the
+        screen, depth, labels and automap buffers, if available."""
+
+        if self.state is not None:
+            observation = self.state.screen_buffer
+
+            if self.depth:
+                observation = self.__add_state_data(observation, self.state.depth_buffer)
+            if self.labels:
+                observation = self.__add_state_data(observation, self.state.labels_buffer)
+            if self.automap:
+                observation = self.__add_state_data(observation, self.state.automap_buffer)
+
+            return observation
+        else:
+            return np.zeros(self.observation_space.shape, dtype=np.uint8)
+
     def __get_observation_space(self):
-        scalar_shape = (self.game.get_screen_height(), self.game.get_screen_width(), 1)
-        channel_shape = (self.game.get_screen_height(), self.game.get_screen_width(), self.game.get_screen_channels())
+        channels = self.game.get_screen_channels() + self.depth + self.labels + self.automap * 3
+        shape = (self.game.get_screen_height(), self.game.get_screen_width(), channels)
+        return gym.spaces.Box(low=0, high=255, shape=shape, dtype=np.uint8)
 
-        spaces = {"screen": gym.spaces.Box(0, 255, channel_shape, dtype=np.uint8)}
-
-        if self.depth:
-            spaces["depth"] = gym.spaces.Box(0, 255, scalar_shape, dtype=np.uint8)
-        if self.labels:
-            spaces["labels"] = gym.spaces.Box(0, 255, scalar_shape, dtype=np.uint8)
-        if self.automap:
-            spaces["automap"] = gym.spaces.Box(0, 255, channel_shape, dtype=np.uint8)
-
-        self.num_game_variables = self.game.get_available_game_variables_size()
-        if self.num_game_variables > 0:
-            spaces["game_variables"] = gym.spaces.Box(
-                np.finfo(np.float32).min,
-                np.finfo(np.float32).max,
-                (self.num_game_variables,),
-                dtype=np.float32,
-            )
-
-        return gym.spaces.Dict(spaces)
+    # def __collect_observations(self):
+    #     observation = {}
+    #     if self.state is not None:
+    #         observation["screen"] = self.state.screen_buffer
+    #         if self.game.get_screen_channels() == 1:
+    #             observation["screen"] = self.state.screen_buffer[..., np.newaxis]
+    #         if self.depth:
+    #             observation["depth"] = self.state.depth_buffer[..., np.newaxis]
+    #         if self.labels:
+    #             observation["labels"] = self.state.labels_buffer[..., np.newaxis]
+    #         if self.automap:
+    #             observation["automap"] = self.state.automap_buffer
+    #             if self.game.get_screen_channels() == 1:
+    #                 observation["automap"] = self.state.automap_buffer[..., np.newaxis]
+    #         if self.num_game_variables > 0:
+    #             observation["game_variables"] = self.state.game_variables.astype(np.float32)
+    #     else:
+    #         # there is no state in the terminal step, so a zero observation is returned instead
+    #         for space_key, space_item in self.observation_space.spaces.items():
+    #             observation[space_key] = np.zeros(space_item.shape, dtype=space_item.dtype)
+    #     return observation
+    #
+    # def __get_observation_space(self):
+    #     scalar_shape = (self.game.get_screen_height(), self.game.get_screen_width(), 1)
+    #     channel_shape = (self.game.get_screen_height(), self.game.get_screen_width(), self.game.get_screen_channels())
+    #
+    #     spaces = {"screen": gym.spaces.Box(0, 255, channel_shape, dtype=np.uint8)}
+    #
+    #     if self.depth:
+    #         spaces["depth"] = gym.spaces.Box(0, 255, scalar_shape, dtype=np.uint8)
+    #     if self.labels:
+    #         spaces["labels"] = gym.spaces.Box(0, 255, scalar_shape, dtype=np.uint8)
+    #     if self.automap:
+    #         spaces["automap"] = gym.spaces.Box(0, 255, channel_shape, dtype=np.uint8)
+    #
+    #     self.num_game_variables = self.game.get_available_game_variables_size()
+    #     if self.num_game_variables > 0:
+    #         spaces["game_variables"] = gym.spaces.Box(
+    #             np.finfo(np.float32).min,
+    #             np.finfo(np.float32).max,
+    #             (self.num_game_variables,),
+    #             dtype=np.float32,
+    #         )
+    #
+    #     return gym.spaces.Dict(spaces)
